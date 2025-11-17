@@ -1,16 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = 'https://axoqioctnzpeqwmvkswd.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF4b3Fpb2N0bnpwZXF3bXZrc3dkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI5NzAxMDIsImV4cCI6MjA3ODU0NjEwMn0.l9ahjJm83rSymn_N3NEPA-dOzMobQEYFypXnasSW1ec';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables');
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Missing Supabase URL or Anon Key');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-    detectSessionInUrl: false
-  }
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: false }
 });
