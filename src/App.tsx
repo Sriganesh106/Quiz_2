@@ -40,6 +40,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasRecordedParticipantRef = useRef(false);
+  const hasSubmittedResults = useRef(false);
 
   const getUrlParams = () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -182,13 +183,11 @@ function App() {
     const newAnswers = [...answers, newAnswer];
     setAnswers(newAnswers);
 
-    // Check if this is the last question
     if (currentQuestionIndex === questions.length - 1) {
       setQuizState('results');
       return;
     }
 
-    // Check if we're moving from standard to boss round
     const nextQuestion = questions[currentQuestionIndex + 1];
     if (currentQuestion.difficulty === 'standard' && nextQuestion?.difficulty === 'boss') {
       console.log('Transitioning to boss round');
@@ -197,7 +196,6 @@ function App() {
       return;
     }
 
-    // Normal progression
     setCurrentQuestionIndex(currentQuestionIndex + 1);
   };
 
@@ -214,6 +212,7 @@ function App() {
     setCurrentQuestionIndex(0);
     setAnswers([]);
     setTimeTaken(0);
+    hasSubmittedResults.current = false;
     setQuizState('welcome');
   };
 
@@ -372,25 +371,32 @@ function App() {
     const totalQuestions = questions.length;
     const scorePercentage = Math.round((correctAnswers / totalQuestions) * 100);
 
-    if (userDetails) {
-      // Submit results to Supabase - with correct parameters
+    if (userDetails && !hasSubmittedResults.current) {
+      hasSubmittedResults.current = true;
+      
       const submitResults = async () => {
         try {
-          const { data, error } = await supabase.rpc('submit_quiz_with_details', {
-            p_user_name: userDetails.name,
-            p_email: userDetails.email,
-            p_mobile_number: userDetails.mobile,
-            p_college_name: userDetails.college,
-            p_total_questions: totalQuestions,
-            p_correct_answers: correctAnswers,
-            p_time_taken_seconds: timeTaken,
-            p_answers: answers,
-          });
+          console.log('Submitting quiz results to quiz_results table...');
+          
+          const { data, error } = await supabase
+            .from('quiz_results')
+            .insert([{
+              user_name: userDetails.name,
+              email: userDetails.email,
+              mobile_number: userDetails.mobile || null,
+              college_name: userDetails.college || null,
+              course_id: userDetails.course_id,      // ✅ ADDED
+              week: userDetails.week,                 // ✅ ADDED
+              total_questions: totalQuestions,
+              correct_answers: correctAnswers,
+              time_taken_seconds: timeTaken,
+              answers: answers
+            }]);
           
           if (error) {
             console.error('Error saving quiz results:', error);
           } else {
-            console.log('Quiz results saved successfully:', data);
+            console.log('Quiz results saved successfully!', data);
           }
         } catch (err) {
           console.error('Error saving quiz results:', err);
