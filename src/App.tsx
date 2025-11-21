@@ -37,7 +37,7 @@ function App() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<QuizAnswer[]>([]);
   const [timeTaken, setTimeTaken] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Start with loading true
   const [error, setError] = useState<string | null>(null);
   const hasRecordedParticipantRef = useRef(false);
   const hasSubmittedResults = useRef(false);
@@ -62,8 +62,9 @@ function App() {
   const currentQuestion = questions[currentQuestionIndex];
   const currentPhase = currentQuestion?.difficulty === 'boss' ? 'boss' : 'standard';
 
-  const checkQuizStatus = async (courseId: string, week: string) => {
-    console.log('Checking quiz status for:', { courseId, week });
+  const checkQuizStatus = async (courseId: string, week: string): Promise<boolean> => {
+    console.log('🔍 Checking quiz status for:', { courseId, week });
+    
     try {
       const { data, error } = await supabase
         .from('quiz_status')
@@ -72,24 +73,31 @@ function App() {
         .eq('week', week)
         .single();
 
-      console.log('Quiz status query result:', { data, error });
-
-      if (error || !data) {
-        console.log('No existing status found, creating new inactive entry');
+      if (error?.code === 'PGRST116' || !data) {
+        console.log('ℹ️ No status found, creating inactive entry');
         const { data: newStatus, error: insertError } = await supabase
           .from('quiz_status')
-          .insert([{ course_id: courseId, week, is_active: false }])
+          .insert([{ 
+            course_id: courseId, 
+            week, 
+            is_active: false 
+          }])
           .select()
           .single();
 
-        console.log('New status created:', { newStatus, insertError });
+        if (insertError) {
+          console.error('❌ Error creating status:', insertError);
+          return false;
+        }
+
+        console.log('✅ Created new status:', newStatus);
         return newStatus?.is_active || false;
       }
 
-      console.log('Returning existing status:', data.is_active);
+      console.log('📊 Current status:', data.is_active);
       return data.is_active;
     } catch (err) {
-      console.error('Error checking quiz status:', err);
+      console.error('❌ Error in checkQuizStatus:', err);
       return false;
     }
   };
@@ -125,46 +133,54 @@ function App() {
 
   useEffect(() => {
     const initializeQuiz = async () => {
-      console.log('Initializing quiz...');
+      console.log('🚀 Initializing quiz...');
       const params = getUrlParams();
-      console.log('URL params:', params);
+      console.log('🔗 URL params:', params);
       
       if (!params.course_id || !params.week) {
-        const errorMsg = 'Missing course_id or week in URL';
+        const errorMsg = '❌ Missing course_id or week in URL';
         console.error(errorMsg);
         setError(errorMsg);
+        setLoading(false);
         return;
       }
 
-      // Check if quiz is active
-      console.log('Checking if quiz is active...');
-      const isActive = await checkQuizStatus(params.course_id, params.week);
-      console.log('Quiz active status:', isActive);
-      
-      if (!isActive) {
-        const errorMsg = 'This quiz is currently inactive. Please try again later.';
-        console.log(errorMsg);
-        setError(errorMsg);
-        setQuizState('user-details');
-        return;
-      }
-
-      // If we get here, the quiz is active
-      if (hasRequiredParams()) {
-        setUserDetails({
-          name: params.name,
-          email: params.email,
-          mobile: '',
-          college: '',
-          course_id: params.course_id,
-          week: params.week
-        });
+      try {
+        // First check if quiz is active
+        console.log('🔍 Checking quiz status...');
+        const isActive = await checkQuizStatus(params.course_id, params.week);
+        console.log('✅ Quiz active status:', isActive);
         
-        // Load questions only if quiz is active
-        const questionsLoaded = await loadQuestions(params.course_id, params.week);
-        if (questionsLoaded) {
-          setQuizState('welcome');
+        if (!isActive) {
+          const errorMsg = '⛔ This quiz is currently inactive. Please try again later.';
+          console.log(errorMsg);
+          setError(errorMsg);
+          setQuizState('user-details');
+          setLoading(false);
+          return;
         }
+
+        // Only proceed if quiz is active
+        if (hasRequiredParams()) {
+          console.log('🎯 Quiz is active, initializing...');
+          setUserDetails({
+            name: params.name,
+            email: params.email,
+            mobile: '',
+            college: '',
+            course_id: params.course_id,
+            week: params.week
+          });
+          
+          const questionsLoaded = await loadQuestions(params.course_id, params.week);
+          if (questionsLoaded) {
+            setQuizState('welcome');
+          }
+        }
+      } catch (err) {
+        console.error('❌ Error initializing quiz:', err);
+        setError('Failed to initialize quiz. Please try again.');
+        setLoading(false);
       }
     };
 
@@ -205,7 +221,6 @@ function App() {
 
     setAnswers([...answers, newAnswer]);
 
-    // Check if this was the last question
     if (currentQuestionIndex === questions.length - 1) {
       setQuizState('results');
       recordQuizCompletion();
@@ -240,7 +255,7 @@ function App() {
           week: userDetails.week,
           score,
           total_questions: total,
-          time_taken: Math.round(timeTaken / 1000), // Convert to seconds
+          time_taken: Math.round(timeTaken / 1000),
           answers: answers.map(a => ({
             question_id: a.questionId,
             user_answer: a.userAnswer,
@@ -293,8 +308,17 @@ function App() {
               />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Error</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Quiz Unavailable</h2>
           <p className="text-gray-600 mb-6">{error}</p>
+          {error.includes('inactive') && (
+            <div className="mb-4 p-3 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-700">
+              <p className="font-medium">Note:</p>
+              <p className="text-sm">If you're the admin, you can activate this quiz in the Supabase dashboard by running:</p>
+              <code className="block bg-gray-100 p-2 rounded text-xs mt-2">
+                UPDATE quiz_status SET is_active = true WHERE course_id = '3' AND week = '1';
+              </code>
+            </div>
+          )}
           <button
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
