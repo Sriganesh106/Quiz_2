@@ -63,6 +63,7 @@ function App() {
   const currentPhase = currentQuestion?.difficulty === 'boss' ? 'boss' : 'standard';
 
   const checkQuizStatus = async (courseId: string, week: string) => {
+    console.log('Checking quiz status for:', { courseId, week });
     try {
       const { data, error } = await supabase
         .from('quiz_status')
@@ -71,17 +72,21 @@ function App() {
         .eq('week', week)
         .single();
 
+      console.log('Quiz status query result:', { data, error });
+
       if (error || !data) {
-        // If no status exists, create one as inactive
-        const { data: newStatus } = await supabase
+        console.log('No existing status found, creating new inactive entry');
+        const { data: newStatus, error: insertError } = await supabase
           .from('quiz_status')
           .insert([{ course_id: courseId, week, is_active: false }])
           .select()
           .single();
 
+        console.log('New status created:', { newStatus, insertError });
         return newStatus?.is_active || false;
       }
 
+      console.log('Returning existing status:', data.is_active);
       return data.is_active;
     } catch (err) {
       console.error('Error checking quiz status:', err);
@@ -120,17 +125,26 @@ function App() {
 
   useEffect(() => {
     const initializeQuiz = async () => {
+      console.log('Initializing quiz...');
       const params = getUrlParams();
+      console.log('URL params:', params);
+      
       if (!params.course_id || !params.week) {
-        setError('Missing course_id or week in URL');
+        const errorMsg = 'Missing course_id or week in URL';
+        console.error(errorMsg);
+        setError(errorMsg);
         return;
       }
 
       // Check if quiz is active
+      console.log('Checking if quiz is active...');
       const isActive = await checkQuizStatus(params.course_id, params.week);
+      console.log('Quiz active status:', isActive);
       
       if (!isActive) {
-        setError('This quiz is currently inactive. Please try again later.');
+        const errorMsg = 'This quiz is currently inactive. Please try again later.';
+        console.log(errorMsg);
+        setError(errorMsg);
         setQuizState('user-details');
         return;
       }
